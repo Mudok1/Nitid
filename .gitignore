@@ -10,3 +10,10 @@ coverage.out
 # Nitid runtime data
 .nitid/cache/
 .nitid/index.sqlite
+
+# Local notes vault content (keep only starter note in git)
+notes/**
+!notes/
+!notes/domains/
+!notes/domains/getting-started/
+!notes/domains/getting-started/*.md

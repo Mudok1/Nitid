@@ -363,8 +363,9 @@ func findNoteBySelector(root, selector string) (NoteFile, error) {
 		return NoteFile{}, fmt.Errorf("note selector is required")
 	}
 
-	if strings.HasPrefix(selector, "#") {
+	if strings.HasPrefix(selector, "#") || strings.HasPrefix(selector, "@") {
 		idxRaw := strings.TrimPrefix(selector, "#")
+		idxRaw = strings.TrimPrefix(idxRaw, "@")
 		idx, err := strconv.Atoi(idxRaw)
 		if err != nil || idx < 1 {
 			return NoteFile{}, fmt.Errorf("invalid note ref %q", selector)

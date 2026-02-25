@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -43,6 +44,8 @@ func run() int {
 		err = runArchive(args[1:])
 	case "show":
 		err = runShow(args[1:])
+	case "edit":
+		err = runEdit(args[1:])
 	case "completion":
 		err = runCompletion(args[1:])
 	case "__complete_ids":
@@ -66,10 +69,11 @@ func printUsage() {
 	fmt.Println("  ntd init [path]")
 	fmt.Println("  ntd capture [text] [--title \"...\"] [--domain <id>] [--tags t1,t2] [--kind note|adr|snippet|daily]")
 	fmt.Println("  ntd ls [--domain <id>] [--tag <tag>] [--status inbox|active|archived] [--kind note|adr|snippet|daily]")
-	fmt.Println("  ntd move <id|#ref> --domain <id>")
-	fmt.Println("  ntd tag <id|#ref> add|rm <tag>")
-	fmt.Println("  ntd archive <id|#ref>")
-	fmt.Println("  ntd show <id|#ref>")
+	fmt.Println("  ntd move <id|@ref> --domain <id>")
+	fmt.Println("  ntd tag <id|@ref> add|rm <tag>")
+	fmt.Println("  ntd archive <id|@ref>")
+	fmt.Println("  ntd show <id|@ref>")
+	fmt.Println("  ntd edit <id|@ref>")
 	fmt.Println("  ntd completion bash")
 	fmt.Println()
 	fmt.Println("Examples:")
@@ -77,10 +81,11 @@ func printUsage() {
 	fmt.Println("  ntd capture \"Investigate goroutine leak in worker pool\"")
 	fmt.Println("  ntd ls --status inbox")
 	fmt.Println("  ntd ls --long")
-	fmt.Println("  ntd move #1 --domain engineering")
-	fmt.Println("  ntd tag #1 add concurrency")
-	fmt.Println("  ntd archive #1")
-	fmt.Println("  ntd show #1")
+	fmt.Println("  ntd move @1 --domain engineering")
+	fmt.Println("  ntd tag @1 add concurrency")
+	fmt.Println("  ntd archive @1")
+	fmt.Println("  ntd show @1")
+	fmt.Println("  ntd edit @1")
 	fmt.Println("  source <(ntd completion bash)")
 	fmt.Println("  ntd capture --domain engineering --tags go,debug --title \"Worker leak\" \"Found issue in retry loop\"")
 }
@@ -246,7 +251,7 @@ func runList(args []string) error {
 			short = shortID(item.Note.ID)
 		}
 		fmt.Printf("%-5s  %-12s  %-8s  %-8s  %-16s  %-18s  %s\n",
-			fmt.Sprintf("#%d", idx+1),
+			fmt.Sprintf("@%d", idx+1),
 			short,
 			item.Note.Status,
 			item.Note.Kind,
@@ -261,11 +266,11 @@ func runList(args []string) error {
 
 func runMove(args []string) error {
 	if len(args) == 0 {
-		return errors.New("move requires exactly one <id|#ref> argument")
+		return errors.New("move requires exactly one <id|@ref> argument")
 	}
 	selector := strings.TrimSpace(args[0])
 	if selector == "" {
-		return errors.New("move requires exactly one <id|#ref> argument")
+		return errors.New("move requires exactly one <id|@ref> argument")
 	}
 
 	fs := flag.NewFlagSet("move", flag.ContinueOnError)
@@ -310,7 +315,7 @@ func runMove(args []string) error {
 
 func runTag(args []string) error {
 	if len(args) != 3 {
-		return errors.New("tag usage: ntd tag <id|#ref> add|rm <tag>")
+		return errors.New("tag usage: ntd tag <id|@ref> add|rm <tag>")
 	}
 
 	selector := strings.TrimSpace(args[0])
@@ -349,7 +354,7 @@ func runTag(args []string) error {
 
 func runArchive(args []string) error {
 	if len(args) != 1 {
-		return errors.New("archive requires exactly one <id|#ref> argument")
+		return errors.New("archive requires exactly one <id|@ref> argument")
 	}
 
 	root, err := filepath.Abs(".")
@@ -377,7 +382,7 @@ func runArchive(args []string) error {
 
 func runShow(args []string) error {
 	if len(args) != 1 {
-		return errors.New("show requires exactly one <id|#ref> argument")
+		return errors.New("show requires exactly one <id|@ref> argument")
 	}
 
 	root, err := filepath.Abs(".")
@@ -409,6 +414,45 @@ func runShow(args []string) error {
 	return nil
 }
 
+func runEdit(args []string) error {
+	if len(args) != 1 {
+		return errors.New("edit requires exactly one <id|@ref> argument")
+	}
+
+	root, err := filepath.Abs(".")
+	if err != nil {
+		return err
+	}
+
+	noteFile, err := findNoteBySelector(root, strings.TrimSpace(args[0]))
+	if err != nil {
+		return err
+	}
+
+	editor := strings.TrimSpace(os.Getenv("VISUAL"))
+	if editor == "" {
+		editor = strings.TrimSpace(os.Getenv("EDITOR"))
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+
+	parts := strings.Fields(editor)
+	if len(parts) == 0 {
+		return errors.New("invalid editor command")
+	}
+
+	cmd := exec.Command(parts[0], append(parts[1:], noteFile.Path)...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("open editor %q: %w", editor, err)
+	}
+
+	return nil
+}
+
 func runCompletion(args []string) error {
 	if len(args) != 1 || strings.TrimSpace(args[0]) != "bash" {
 		return errors.New("completion usage: ntd completion bash")
@@ -430,6 +474,7 @@ func runCompleteIDs(args []string) error {
 		return err
 	}
 	for i, item := range notes {
+		fmt.Printf("@%d\n", i+1)
 		fmt.Printf("#%d\n", i+1)
 		fmt.Println(item.Note.ID)
 	}
@@ -550,12 +595,12 @@ _ntd_complete() {
   cmd="${COMP_WORDS[1]}"
 
   if [[ ${COMP_CWORD} -eq 1 ]]; then
-    COMPREPLY=( $(compgen -W "help init capture ls move tag archive show completion" -- "${cur}") )
+    COMPREPLY=( $(compgen -W "help init capture ls move tag archive show edit completion" -- "${cur}") )
     return 0
   fi
 
   case "${cmd}" in
-    move|tag|archive|show)
+    move|tag|archive|show|edit)
       if [[ ${COMP_CWORD} -eq 2 ]]; then
         COMPREPLY=( $(compgen -W "$(ntd __complete_ids 2>/dev/null)" -- "${cur}") )
         return 0

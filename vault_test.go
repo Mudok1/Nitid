@@ -109,3 +109,47 @@ func TestSaveAndReadNoteRoundtrip(t *testing.T) {
 		t.Fatalf("body mismatch: got=%q want=%q", loaded.Body, note.Body)
 	}
 }
+
+func TestFindNoteBySelectorWithAtRef(t *testing.T) {
+	root := t.TempDir()
+	if err := createVaultStructure(root); err != nil {
+		t.Fatalf("create vault: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	noteA := Note{
+		ID:        newULID(now),
+		Title:     "First note",
+		CreatedAt: now,
+		UpdatedAt: now,
+		Domain:    "engineering",
+		Status:    statusActive,
+		Kind:      "note",
+		Body:      "a",
+	}
+	noteB := Note{
+		ID:        newULID(now.Add(time.Second)),
+		Title:     "Second note",
+		CreatedAt: now.Add(time.Second),
+		UpdatedAt: now.Add(time.Second),
+		Domain:    "engineering",
+		Status:    statusActive,
+		Kind:      "note",
+		Body:      "b",
+	}
+
+	if _, err := saveNote(root, "", noteA); err != nil {
+		t.Fatalf("save noteA: %v", err)
+	}
+	if _, err := saveNote(root, "", noteB); err != nil {
+		t.Fatalf("save noteB: %v", err)
+	}
+
+	selected, err := findNoteBySelector(root, "@1")
+	if err != nil {
+		t.Fatalf("select @1: %v", err)
+	}
+	if selected.Note.ID != noteB.ID {
+		t.Fatalf("@1 should be most recently updated note: got=%s want=%s", selected.Note.ID, noteB.ID)
+	}
+}

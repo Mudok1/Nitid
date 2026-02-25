@@ -17,10 +17,11 @@ Use these commands to work with notes from the terminal.
 - `ntd capture [text] [--title "..."] [--domain <id>] [--tags t1,t2] [--kind note|adr|snippet|daily]` creates a note.
 - `ntd ls [--domain <id>] [--tag <tag>] [--status inbox|active|archived] [--kind note|adr|snippet|daily]` lists notes.
 - `ntd ls --long` lists notes with full file paths and full IDs.
-- `ntd move <id|#ref> --domain <domain_id>` moves a note from inbox or another domain into a domain.
-- `ntd tag <id|#ref> add|rm <tag>` adds or removes one tag.
-- `ntd archive <id|#ref>` moves a note to archive.
-- `ntd show <id|#ref>` prints note metadata and body in the terminal.
+- `ntd move <id|@ref> --domain <domain_id>` moves a note from inbox or another domain into a domain.
+- `ntd tag <id|@ref> add|rm <tag>` adds or removes one tag.
+- `ntd archive <id|@ref>` moves a note to archive.
+- `ntd show <id|@ref>` prints note metadata and body in the terminal.
+- `ntd edit <id|@ref>` opens a note in your terminal editor.
 
 ## Exit codes
 
@@ -37,10 +38,11 @@ These examples show the most common day-to-day flow.
 ntd init .
 ntd capture "Investigate flaky test in CI"
 ntd ls --status inbox
-ntd move #1 --domain engineering
-ntd tag #1 add go
-ntd show #1
-ntd archive #1
+ntd move @1 --domain engineering
+ntd tag @1 add go
+ntd show @1
+ntd edit @1
+ntd archive @1
 ```
 
 You can also capture from stdin when that is faster.
@@ -70,5 +72,16 @@ use.
 source <(ntd completion bash)
 ```
 
-After this, `tab` completion works for commands and for `#ref` or full note IDs
+After this, `tab` completion works for commands and for `@ref` or full note IDs
 in commands like `ntd show`, `ntd move`, `ntd tag`, and `ntd archive`.
+
+## Why `#1` can fail in shell
+
+In Bash, an unquoted `#` starts a comment. That means `ntd show #1` can be
+parsed as `ntd show`.
+
+Use one of these options:
+
+- Preferred: `ntd show @1`
+- Quoted hash ref: `ntd show '#1'`
+- Full ID or unique prefix: `ntd show 01KJ9PJ4`
