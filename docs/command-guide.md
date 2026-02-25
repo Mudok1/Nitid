@@ -2,6 +2,16 @@
 
 This guide explains every current `ntd` command with practical examples.
 
+## Related docs
+
+Use these pages with this guide when you need deeper context.
+
+- `docs/cli-mvp.md` for feature-level behavior.
+- `docs/note-schema-v1.md` for metadata rules.
+- `docs/domain-tag-conventions.md` for routing rules.
+- `docs/development-workflow.md` for changelog and update policy.
+- `docs/CHANGELOG.md` for recent project changes.
+
 ## Before you start
 
 Run commands from your vault root.

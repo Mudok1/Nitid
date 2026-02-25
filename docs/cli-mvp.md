@@ -3,6 +3,8 @@
 This page explains the current MVP behavior for `ntd`. Use it as the source of
 truth for commands, arguments, and expected results.
 
+For change history, see `docs/CHANGELOG.md`.
+
 ## Why this MVP exists
 
 The MVP focuses on fast note capture and simple note lifecycle management. You

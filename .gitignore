@@ -11,6 +11,9 @@ coverage.out
 .nitid/cache/
 .nitid/index.sqlite
 
+# Local project context for agents/sessions
+about.md
+
 # Local notes vault content (keep only starter note in git)
 notes/**
 !notes/
