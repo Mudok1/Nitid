@@ -1,0 +1,4 @@
+[vault]
+version = 1
+default_domain = ""
+default_kind = "note"

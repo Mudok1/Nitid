@@ -1,0 +1,12 @@
+# Build artifacts
+ntd
+bin/
+dist/
+
+# Go workspace outputs
+coverage.out
+*.test
+
+# Nitid runtime data
+.nitid/cache/
+.nitid/index.sqlite
