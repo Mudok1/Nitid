@@ -1,4 +1,4 @@
-package main
+package vault
 
 import (
 	"bytes"
@@ -617,4 +617,79 @@ version = 1
 default_domain = ""
 default_kind = "note"
 `) + "\n"
+}
+
+const (
+	StatusInbox    = statusInbox
+	StatusActive   = statusActive
+	StatusArchived = statusArchived
+)
+
+func IsAllowedStatus(status string) bool {
+	_, ok := allowedStatuses[strings.ToLower(strings.TrimSpace(status))]
+	return ok
+}
+
+func IsValidDomainID(value string) bool {
+	return domainIDPattern.MatchString(strings.ToLower(strings.TrimSpace(value)))
+}
+
+func IsValidTag(value string) bool {
+	return tagPattern.MatchString(strings.ToLower(strings.TrimSpace(value)))
+}
+
+func CreateVaultStructure(root string) error {
+	return createVaultStructure(root)
+}
+
+func WriteNote(root string, note Note) (string, error) {
+	return writeNote(root, note)
+}
+
+func SaveNote(root, currentPath string, note Note) (string, error) {
+	return saveNote(root, currentPath, note)
+}
+
+func ListNotes(root string, filter NoteFilter) ([]NoteFile, error) {
+	return listNotes(root, filter)
+}
+
+func ReadNote(path string) (Note, error) {
+	return readNote(path)
+}
+
+func ResolveNotePath(root string, note Note) (string, error) {
+	return resolveNotePath(root, note)
+}
+
+func SameFilePath(a, b string) (bool, error) {
+	return sameFilePath(a, b)
+}
+
+func FindNoteByID(root, id string) (NoteFile, error) {
+	return findNoteByID(root, id)
+}
+
+func FindNoteBySelector(root, selector string) (NoteFile, error) {
+	return findNoteBySelector(root, selector)
+}
+
+func UniqueIDPrefixes(notes []NoteFile, minLen int) map[string]string {
+	return uniqueIDPrefixes(notes, minLen)
+}
+
+func ValidateNoteForWrite(note Note) error {
+	return validateNoteForWrite(note)
+}
+
+func IsAllowedKind(kind string) bool {
+	return isAllowedKind(strings.ToLower(strings.TrimSpace(kind)))
+}
+
+func ParseCSV(value string) []string {
+	return parseCSV(value)
+}
+
+func NewULID(now time.Time) string {
+	return newULID(now)
 }
