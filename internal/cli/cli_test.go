@@ -1,9 +1,10 @@
 package cli
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
+
+	"nitid/internal/core"
 )
 
 func TestUpdateTags(t *testing.T) {
@@ -69,7 +70,6 @@ func TestSortNotesByTitleAsc(t *testing.T) {
 
 func TestCollectNotePaths(t *testing.T) {
 	root := t.TempDir()
-	notesDir := filepath.Join(root, "notes")
 	if err := createVaultStructure(root); err != nil {
 		t.Fatalf("create vault: %v", err)
 	}
@@ -88,11 +88,11 @@ func TestCollectNotePaths(t *testing.T) {
 		t.Fatalf("save note: %v", err)
 	}
 
-	paths, err := collectNotePaths(notesDir)
+	report, err := core.New(root).Validate()
 	if err != nil {
-		t.Fatalf("collect paths: %v", err)
+		t.Fatalf("validate: %v", err)
 	}
-	if len(paths) != 1 {
-		t.Fatalf("expected 1 path, got %d", len(paths))
+	if report.Total != 1 {
+		t.Fatalf("expected 1 path, got %d", report.Total)
 	}
 }

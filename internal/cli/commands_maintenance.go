@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -20,12 +19,12 @@ func runClean(args []string) error {
 		return errors.New("clean usage: ntd clean [--dry-run]")
 	}
 
-	root, err := filepath.Abs(".")
+	svc, err := newCoreService()
 	if err != nil {
 		return err
 	}
 
-	targets, err := findEditorTempFiles(filepath.Join(root, "notes"))
+	targets, err := svc.FindEditorTempFiles()
 	if err != nil {
 		return err
 	}
@@ -35,7 +34,7 @@ func runClean(args []string) error {
 	}
 
 	for _, path := range targets {
-		rel, relErr := filepath.Rel(root, path)
+		rel, relErr := filepath.Rel(svc.Root(), path)
 		if relErr != nil {
 			rel = path
 		}
@@ -57,12 +56,12 @@ func runValidate(args []string) error {
 		return errors.New("validate does not accept arguments")
 	}
 
-	root, err := filepath.Abs(".")
+	svc, err := newCoreService()
 	if err != nil {
 		return err
 	}
 
-	report, err := validateVault(root)
+	report, err := svc.Validate()
 	if err != nil {
 		return err
 	}
@@ -96,14 +95,14 @@ func runDoctor(args []string) error {
 		return errors.New("doctor does not accept arguments")
 	}
 
-	root, err := filepath.Abs(".")
+	svc, err := newCoreService()
 	if err != nil {
 		return err
 	}
 
 	status := "ok"
 
-	notesRoot := filepath.Join(root, "notes")
+	notesRoot := filepath.Join(svc.Root(), "notes")
 	if info, statErr := os.Stat(notesRoot); statErr != nil || !info.IsDir() {
 		fmt.Printf("[fail] notes directory missing: %s\n", notesRoot)
 		status = "fail"
@@ -131,7 +130,7 @@ func runDoctor(args []string) error {
 
 	fmt.Println("[ok] completion command available: ntd completion bash")
 
-	report, valErr := validateVault(root)
+	report, valErr := svc.Validate()
 	if valErr != nil {
 		fmt.Printf("[fail] validate failed: %v\n", valErr)
 		status = "fail"
@@ -174,79 +173,18 @@ func runCompleteIDs(args []string) error {
 	if len(args) > 0 {
 		return errors.New("__complete_ids does not accept arguments")
 	}
-	root, err := filepath.Abs(".")
+	svc, err := newCoreService()
 	if err != nil {
 		return err
 	}
-	notes, err := listNotes(root, NoteFilter{})
+	selectors, err := svc.CompleteSelectors()
 	if err != nil {
 		return err
 	}
-	for i, item := range notes {
-		fmt.Printf("@%d\n", i+1)
-		fmt.Printf("#%d\n", i+1)
-		fmt.Println(item.Note.ID)
+	for _, selector := range selectors {
+		fmt.Println(selector)
 	}
 	return nil
-}
-
-func findEditorTempFiles(notesRoot string) ([]string, error) {
-	targets := make([]string, 0)
-	err := filepath.Walk(notesRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-
-		name := info.Name()
-		if strings.HasSuffix(name, ".swp") || strings.HasSuffix(name, ".swo") || strings.HasSuffix(name, "~") {
-			targets = append(targets, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(targets)
-	return targets, nil
-}
-
-func collectNotePaths(notesRoot string) ([]string, error) {
-	paths := make([]string, 0)
-	err := filepath.Walk(notesRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			if os.IsNotExist(err) {
-				return nil
-			}
-			return err
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if filepath.Ext(path) != ".md" {
-			return nil
-		}
-		paths = append(paths, path)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(paths)
-	return paths, nil
-}
-
-func toRelOrAbs(root, path string) string {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return path
-	}
-	return filepath.ToSlash(rel)
 }
 
 func bashCompletionScript() string {
@@ -259,12 +197,12 @@ _ntd_complete() {
   cmd="${COMP_WORDS[1]}"
 
 	if [[ ${COMP_CWORD} -eq 1 ]]; then
-	    COMPREPLY=( $(compgen -W "help version init capture new daily templates ls find move tag archive show edit clean validate doctor tui completion" -- "${cur}") )
+	    COMPREPLY=( $(compgen -W "help version init capture new daily templates ls find move tag archive delete show edit clean validate doctor tui completion" -- "${cur}") )
 	    return 0
 	  fi
 
   case "${cmd}" in
-    move|tag|archive|show|edit)
+    move|tag|archive|delete|show|edit)
       if [[ ${COMP_CWORD} -eq 2 ]]; then
         COMPREPLY=( $(compgen -W "$(ntd __complete_ids 2>/dev/null)" -- "${cur}") )
         return 0

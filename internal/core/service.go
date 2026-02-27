@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -23,6 +24,12 @@ type Service struct {
 type MutationResult struct {
 	NoteID  string
 	RelPath string
+}
+
+type ValidationReport struct {
+	Total    int
+	Warnings []string
+	Errors   []string
 }
 
 func New(root string) *Service {
@@ -172,12 +179,134 @@ func (s *Service) Archive(selector string) (MutationResult, error) {
 	return MutationResult{NoteID: note.ID, RelPath: rel}, nil
 }
 
+func (s *Service) Delete(selector string) (MutationResult, error) {
+	noteFile, err := s.FindBySelector(selector)
+	if err != nil {
+		return MutationResult{}, err
+	}
+
+	if err := os.Remove(noteFile.Path); err != nil {
+		return MutationResult{}, err
+	}
+
+	return MutationResult{NoteID: noteFile.Note.ID, RelPath: noteFile.RelPath}, nil
+}
+
 func (s *Service) Edit(selector string) error {
 	noteFile, err := s.FindBySelector(selector)
 	if err != nil {
 		return err
 	}
 	return OpenInEditor(noteFile.Path)
+}
+
+func (s *Service) UpdateBody(selector, body string) (MutationResult, error) {
+	noteFile, err := s.FindBySelector(selector)
+	if err != nil {
+		return MutationResult{}, err
+	}
+
+	note := noteFile.Note
+	note.Body = strings.TrimRight(body, "\n")
+	note.UpdatedAt = time.Now().UTC()
+
+	rel, err := vault.SaveNote(s.root, noteFile.Path, note)
+	if err != nil {
+		return MutationResult{}, err
+	}
+
+	return MutationResult{NoteID: note.ID, RelPath: rel}, nil
+}
+
+func (s *Service) CompleteSelectors() ([]string, error) {
+	notes, err := vault.ListNotes(s.root, NoteFilter{})
+	if err != nil {
+		return nil, err
+	}
+
+	selectors := make([]string, 0, len(notes)*3)
+	for i, item := range notes {
+		selectors = append(selectors, fmt.Sprintf("@%d", i+1))
+		selectors = append(selectors, fmt.Sprintf("#%d", i+1))
+		selectors = append(selectors, item.Note.ID)
+	}
+
+	return selectors, nil
+}
+
+func (s *Service) FindEditorTempFiles() ([]string, error) {
+	targets := make([]string, 0)
+	err := filepath.Walk(filepath.Join(s.root, "notes"), func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		name := info.Name()
+		if strings.HasSuffix(name, ".swp") || strings.HasSuffix(name, ".swo") || strings.HasSuffix(name, "~") {
+			targets = append(targets, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Strings(targets)
+	return targets, nil
+}
+
+func (s *Service) Validate() (ValidationReport, error) {
+	paths, err := collectNotePaths(filepath.Join(s.root, "notes"))
+	if err != nil {
+		return ValidationReport{}, err
+	}
+
+	report := ValidationReport{
+		Total:    len(paths),
+		Warnings: []string{},
+		Errors:   []string{},
+	}
+
+	seenIDs := make(map[string]string)
+	for _, path := range paths {
+		note, readErr := vault.ReadNote(path)
+		relPath := toRelOrAbs(s.root, path)
+		if readErr != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("%s: %v", relPath, readErr))
+			continue
+		}
+
+		if first, exists := seenIDs[note.ID]; exists {
+			report.Errors = append(report.Errors, fmt.Sprintf("duplicate id %s: %s and %s", note.ID, first, relPath))
+		} else {
+			seenIDs[note.ID] = relPath
+		}
+
+		expected, expectedErr := vault.ResolveNotePath(s.root, note)
+		if expectedErr != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("%s: %v", relPath, expectedErr))
+			continue
+		}
+		same, sameErr := vault.SameFilePath(path, expected)
+		if sameErr != nil {
+			report.Errors = append(report.Errors, fmt.Sprintf("%s: %v", relPath, sameErr))
+			continue
+		}
+		if !same {
+			report.Warnings = append(report.Warnings, fmt.Sprintf("%s expected at %s", relPath, toRelOrAbs(s.root, expected)))
+		}
+	}
+
+	sort.Strings(report.Errors)
+	sort.Strings(report.Warnings)
+
+	return report, nil
 }
 
 func NoteMatchesQuery(note Note, query string) bool {
@@ -310,4 +439,37 @@ func OpenInEditor(path string) error {
 		return fmt.Errorf("open editor %q: %w", ResolveEditor(), err)
 	}
 	return nil
+}
+
+func collectNotePaths(notesRoot string) ([]string, error) {
+	paths := make([]string, 0)
+	err := filepath.Walk(notesRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if filepath.Ext(path) != ".md" {
+			return nil
+		}
+		paths = append(paths, path)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func toRelOrAbs(root, path string) string {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return path
+	}
+	return filepath.ToSlash(rel)
 }

@@ -94,6 +94,43 @@ func runArchive(args []string) error {
 	return nil
 }
 
+func runDelete(args []string) error {
+	if len(args) < 1 {
+		return errors.New("delete usage: ntd delete <id|@ref> --yes")
+	}
+
+	selector := strings.TrimSpace(args[0])
+	if selector == "" {
+		return errors.New("delete usage: ntd delete <id|@ref> --yes")
+	}
+
+	confirmed := false
+	for _, arg := range args[1:] {
+		if arg == "--yes" || arg == "-y" {
+			confirmed = true
+			continue
+		}
+		return errors.New("delete usage: ntd delete <id|@ref> --yes")
+	}
+
+	if !confirmed {
+		return errors.New("delete requires confirmation flag --yes")
+	}
+
+	svc, err := newCoreService()
+	if err != nil {
+		return err
+	}
+
+	result, err := svc.Delete(selector)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("deleted %s -> %s\n", result.NoteID, result.RelPath)
+	return nil
+}
+
 func runEdit(args []string) error {
 	if len(args) != 1 {
 		return errors.New("edit requires exactly one <id|@ref> argument")

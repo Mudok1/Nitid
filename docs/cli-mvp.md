@@ -27,6 +27,7 @@ Use these commands to work with notes from the terminal.
 - `ntd move <id|@ref> --domain <domain_id>` moves a note from inbox or another domain into a domain.
 - `ntd tag <id|@ref> add|rm <tag>` adds or removes one tag.
 - `ntd archive <id|@ref>` moves a note to archive.
+- `ntd delete <id|@ref> --yes` permanently deletes a note file.
 - `ntd show <id|@ref>` prints note metadata and body in the terminal.
 - `ntd show <id|@ref> --raw` prints the raw markdown file exactly as stored.
 - `ntd edit <id|@ref>` opens a note in your terminal editor.
@@ -34,6 +35,9 @@ Use these commands to work with notes from the terminal.
 - `ntd validate` checks notes for parse issues, duplicate IDs, and path mismatches.
 - `ntd doctor` runs quick environment and vault health checks.
 - `ntd tui` opens the interactive three-panel terminal interface.
+
+Inside `ntd tui`, you can edit note bodies directly without leaving the TUI
+(`e` to edit, `Ctrl+S` to save, `Esc` to cancel).
 
 ## Exit codes
 
@@ -61,6 +65,7 @@ ntd tag @1 add go
 ntd show @1
 ntd show @1 --raw
 ntd edit @1
+ntd delete @1 --yes
 ntd clean --dry-run
 ntd validate
 ntd doctor

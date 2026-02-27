@@ -7,9 +7,25 @@ import (
 
 	"nitid/internal/core"
 
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+const (
+	tuiModeNormal  = "normal"
+	tuiModeCommand = "command"
+	tuiModeEdit    = "edit"
+)
+
+var (
+	tuiBgColor     = lipgloss.Color("0")
+	tuiFgColor     = lipgloss.Color("252")
+	tuiMutedColor  = lipgloss.Color("244")
+	tuiAccentColor = lipgloss.Color("81")
+	tuiBorderColor = lipgloss.Color("240")
+	tuiStatusBg    = lipgloss.Color("236")
 )
 
 type notesLoadedMsg struct {
@@ -22,10 +38,6 @@ type opDoneMsg struct {
 	err    error
 }
 
-type editorDoneMsg struct {
-	err error
-}
-
 type tuiModel struct {
 	svc             *core.Service
 	notes           []core.NoteFile
@@ -35,10 +47,12 @@ type tuiModel struct {
 	height          int
 	status          string
 	commandInput    textinput.Model
+	textarea        textarea.Model
 	mode            string
 	confirmArchive  bool
 	activeQuery     string
 	loading         bool
+	editingNoteID   string
 }
 
 func runTUI(args []string) error {
@@ -61,13 +75,18 @@ func newTUIModel(svc *core.Service) tuiModel {
 	input.Prompt = ":"
 	input.CharLimit = 256
 
+	ta := textarea.New()
+	ta.Prompt = ""
+	ta.ShowLineNumbers = true
+
 	return tuiModel{
 		svc:          svc,
 		notes:        []core.NoteFile{},
 		selected:     0,
 		status:       "loading notes...",
 		commandInput: input,
-		mode:         "normal",
+		textarea:     ta,
+		mode:         tuiModeNormal,
 		loading:      true,
 	}
 }
@@ -81,6 +100,7 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = typed.Width
 		m.height = typed.Height
+		m.resizeEditor()
 		return m, nil
 	case notesLoadedMsg:
 		m.loading = false
@@ -109,27 +129,29 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = typed.status
 		m.confirmArchive = false
 		return m, loadListCmd(m.svc)
-	case editorDoneMsg:
-		if typed.err != nil {
-			m.status = fmt.Sprintf("editor error: %v", typed.err)
-		} else {
-			m.status = "editor closed"
-		}
-		return m, loadListCmd(m.svc)
 	case tea.KeyMsg:
-		if m.mode == "command" {
+		switch m.mode {
+		case tuiModeCommand:
 			return m.updateCommandMode(typed)
+		case tuiModeEdit:
+			return m.updateEditMode(typed)
+		default:
+			return m.updateNormalMode(typed)
 		}
-		return m.updateNormalMode(typed)
 	}
 
-	if m.mode == "command" {
+	switch m.mode {
+	case tuiModeCommand:
 		var cmd tea.Cmd
 		m.commandInput, cmd = m.commandInput.Update(msg)
 		return m, cmd
+	case tuiModeEdit:
+		var cmd tea.Cmd
+		m.textarea, cmd = m.textarea.Update(msg)
+		return m, cmd
+	default:
+		return m, nil
 	}
-
-	return m, nil
 }
 
 func (m tuiModel) updateCommandMode(key tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -138,17 +160,45 @@ func (m tuiModel) updateCommandMode(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		command := strings.TrimSpace(m.commandInput.Value())
 		m.commandInput.SetValue("")
 		m.commandInput.Blur()
-		m.mode = "normal"
+		m.mode = tuiModeNormal
 		return m.execCommand(command)
 	case "esc":
 		m.commandInput.SetValue("")
 		m.commandInput.Blur()
-		m.mode = "normal"
+		m.mode = tuiModeNormal
 		m.status = ""
 		return m, nil
 	default:
 		var cmd tea.Cmd
 		m.commandInput, cmd = m.commandInput.Update(key)
+		return m, cmd
+	}
+}
+
+func (m tuiModel) updateEditMode(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "ctrl+s":
+		if strings.TrimSpace(m.editingNoteID) == "" {
+			m.status = "no note selected"
+			m.mode = tuiModeNormal
+			return m, nil
+		}
+
+		noteID := m.editingNoteID
+		body := m.textarea.Value()
+		m.pendingSelectID = noteID
+		m.mode = tuiModeNormal
+		m.editingNoteID = ""
+		m.status = "saving note..."
+		return m, updateBodyCmd(m.svc, noteID, body)
+	case "esc":
+		m.mode = tuiModeNormal
+		m.editingNoteID = ""
+		m.status = "edit cancelled"
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.textarea, cmd = m.textarea.Update(key)
 		return m, cmd
 	}
 }
@@ -196,12 +246,12 @@ func (m tuiModel) updateNormalMode(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = "refreshed"
 		return m, loadListCmd(m.svc)
 	case ":":
-		m.mode = "command"
+		m.mode = tuiModeCommand
 		m.commandInput.SetValue("")
 		m.commandInput.Focus()
 		return m, nil
 	case "/":
-		m.mode = "command"
+		m.mode = tuiModeCommand
 		m.commandInput.SetValue("find ")
 		m.commandInput.CursorEnd()
 		m.commandInput.Focus()
@@ -216,20 +266,32 @@ func (m tuiModel) updateNormalMode(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("archive %s? press y/n", shortID(note.Note.ID))
 		return m, nil
 	case "e":
-		note, ok := m.selectedNote()
-		if !ok {
-			m.status = "no note selected"
-			return m, nil
-		}
-		cmd, err := core.EditorCommand(note.Path)
-		if err != nil {
-			m.status = fmt.Sprintf("error: %v", err)
-			return m, nil
-		}
-		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-			return editorDoneMsg{err: err}
-		})
+		return m.beginEdit()
 	}
+
+	return m, nil
+}
+
+func (m tuiModel) beginEdit() (tea.Model, tea.Cmd) {
+	note, ok := m.selectedNote()
+	if !ok {
+		m.status = "no note selected"
+		return m, nil
+	}
+
+	m.mode = tuiModeEdit
+	m.editingNoteID = note.Note.ID
+	m.confirmArchive = false
+	m.status = fmt.Sprintf("editing %s (Ctrl+S save, Esc cancel)", shortID(note.Note.ID))
+
+	ta := textarea.New()
+	ta.Prompt = ""
+	ta.CharLimit = 0
+	ta.ShowLineNumbers = true
+	ta.SetValue(note.Note.Body)
+	ta.Focus()
+	m.textarea = ta
+	m.resizeEditor()
 
 	return m, nil
 }
@@ -250,7 +312,7 @@ func (m tuiModel) execCommand(input string) (tea.Model, tea.Cmd) {
 	case "q", "quit":
 		return m, tea.Quit
 	case "help":
-		m.status = "commands: ls, find <query>, move <domain>, tag add|rm <tag>, archive, quit"
+		m.status = "commands: ls, find <query>, edit, move <domain>, tag add|rm <tag>, archive, quit"
 		return m, nil
 	case "ls":
 		m.activeQuery = ""
@@ -265,6 +327,8 @@ func (m tuiModel) execCommand(input string) (tea.Model, tea.Cmd) {
 		m.activeQuery = query
 		m.status = fmt.Sprintf("searching for %q", query)
 		return m, findNotesCmd(m.svc, query)
+	case "edit":
+		return m.beginEdit()
 	case "archive":
 		note, ok := m.selectedNote()
 		if !ok {
@@ -309,39 +373,127 @@ func (m tuiModel) View() string {
 		return "starting ntd tui..."
 	}
 
-	contentHeight := m.height - 2
-	if contentHeight < 8 {
-		contentHeight = 8
+	if m.mode == tuiModeEdit {
+		return m.renderEditView()
 	}
 
-	leftW := m.width * 30 / 100
-	rightW := m.width * 25 / 100
-	centerW := m.width - leftW - rightW - 4
-	if leftW < 28 {
-		leftW = 28
+	contentHeight := maxInt(8, m.height-2)
+	leftW, centerW, rightW := m.panelWidths()
+
+	listPanel := m.renderPanel(leftW, contentHeight, m.renderList(contentHeight-2))
+	previewPanel := m.renderPanel(centerW, contentHeight, m.renderPreview(contentHeight-2))
+	metaPanel := m.renderPanel(rightW, contentHeight, m.renderMeta(contentHeight-2))
+
+	spacer := lipgloss.NewStyle().Width(1).Background(tuiBgColor).Render(" ")
+	body := lipgloss.JoinHorizontal(lipgloss.Top, listPanel, spacer, previewPanel, spacer, metaPanel)
+
+	statusText := m.status
+	if m.mode == tuiModeCommand {
+		statusText = m.commandInput.View()
 	}
-	if rightW < 28 {
-		rightW = 28
-	}
-	if centerW < 32 {
-		centerW = 32
+	if strings.TrimSpace(statusText) == "" {
+		statusText = "j/k move  / find  : commands  e edit  a archive  q quit"
 	}
 
-	panelStyle := lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
-	listPanel := panelStyle.Width(leftW).Height(contentHeight).Render(m.renderList(contentHeight - 2))
-	previewPanel := panelStyle.Width(centerW).Height(contentHeight).Render(m.renderPreview(contentHeight - 2))
-	metaPanel := panelStyle.Width(rightW).Height(contentHeight).Render(m.renderMeta(contentHeight - 2))
+	statusLine := lipgloss.NewStyle().
+		Width(m.width).
+		Foreground(tuiFgColor).
+		Background(tuiStatusBg).
+		Padding(0, 1).
+		Render(statusText)
 
-	body := lipgloss.JoinHorizontal(lipgloss.Top, listPanel, previewPanel, metaPanel)
-	status := m.status
-	if m.mode == "command" {
-		status = m.commandInput.View()
-	}
-	if strings.TrimSpace(status) == "" {
-		status = "j/k move  / find  : commands  e edit  a archive  q quit"
+	return lipgloss.NewStyle().Background(tuiBgColor).Foreground(tuiFgColor).Render(body + "\n" + statusLine)
+}
+
+func (m tuiModel) renderEditView() string {
+	title := m.editingTitle()
+	header := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(tuiAccentColor).
+		Render(fmt.Sprintf("Editing: %s", title))
+
+	footer := lipgloss.NewStyle().
+		Foreground(tuiMutedColor).
+		Render("Ctrl+S save    Esc cancel")
+
+	frame := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tuiAccentColor).
+		Background(tuiBgColor).
+		Foreground(tuiFgColor).
+		Padding(0, 1).
+		Width(maxInt(20, m.width-4)).
+		Height(maxInt(6, m.height-3)).
+		Render(header + "\n\n" + m.textarea.View() + "\n" + footer)
+
+	statusLine := lipgloss.NewStyle().
+		Width(m.width).
+		Foreground(tuiFgColor).
+		Background(tuiStatusBg).
+		Padding(0, 1).
+		Render(m.status)
+
+	return lipgloss.NewStyle().Background(tuiBgColor).Foreground(tuiFgColor).Render(frame + "\n" + statusLine)
+}
+
+func (m tuiModel) panelWidths() (int, int, int) {
+	width := maxInt(90, m.width)
+	left := maxInt(28, width*28/100)
+	right := maxInt(28, width*24/100)
+	center := width - left - right - 2
+
+	if center < 40 {
+		deficit := 40 - center
+		leftRoom := left - 28
+		rightRoom := right - 28
+
+		cutLeft := minInt(leftRoom, deficit/2+deficit%2)
+		left -= cutLeft
+		deficit -= cutLeft
+
+		cutRight := minInt(rightRoom, deficit)
+		right -= cutRight
+		deficit -= cutRight
+
+		if deficit > 0 && left > 24 {
+			extra := minInt(left-24, deficit)
+			left -= extra
+			deficit -= extra
+		}
+		if deficit > 0 && right > 24 {
+			extra := minInt(right-24, deficit)
+			right -= extra
+		}
+
+		center = width - left - right - 2
 	}
 
-	return body + "\n" + status
+	return left, maxInt(24, center), right
+}
+
+func (m tuiModel) renderPanel(totalWidth, totalHeight int, content string) string {
+	contentWidth := maxInt(1, totalWidth-4)
+	contentHeight := maxInt(1, totalHeight-2)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(tuiBorderColor).
+		Background(tuiBgColor).
+		Foreground(tuiFgColor).
+		Padding(0, 1).
+		Width(contentWidth).
+		Height(contentHeight).
+		Render(content)
+}
+
+func (m *tuiModel) resizeEditor() {
+	if m.width <= 0 || m.height <= 0 {
+		return
+	}
+	textWidth := maxInt(20, m.width-12)
+	textHeight := maxInt(6, m.height-10)
+	m.textarea.SetWidth(textWidth)
+	m.textarea.SetHeight(textHeight)
 }
 
 func (m *tuiModel) clampSelection() {
@@ -380,10 +532,19 @@ func (m tuiModel) selectedNote() (core.NoteFile, bool) {
 	return m.notes[m.selected], true
 }
 
+func (m tuiModel) editingTitle() string {
+	for _, item := range m.notes {
+		if item.Note.ID == m.editingNoteID {
+			return item.Note.Title
+		}
+	}
+	return m.editingNoteID
+}
+
 func (m tuiModel) renderList(maxLines int) string {
 	lines := []string{"Notes"}
 	if m.activeQuery != "" {
-		lines = append(lines, fmt.Sprintf("filter: %q", m.activeQuery))
+		lines = append(lines, lipgloss.NewStyle().Foreground(tuiMutedColor).Render(fmt.Sprintf("filter: %q", m.activeQuery)))
 	}
 
 	if m.loading {
@@ -401,9 +562,9 @@ func (m tuiModel) renderList(maxLines int) string {
 		if idx == m.selected {
 			marker = ">"
 		}
-		line := fmt.Sprintf("%s @%d %-8s %s", marker, idx+1, item.Note.Status, truncate(item.Note.Title, 42))
+		line := fmt.Sprintf("%s @%d %-8s %s", marker, idx+1, item.Note.Status, truncate(item.Note.Title, 38))
 		if idx == m.selected {
-			line = lipgloss.NewStyle().Bold(true).Render(line)
+			line = lipgloss.NewStyle().Bold(true).Foreground(tuiAccentColor).Render(line)
 		}
 		lines = append(lines, line)
 		if len(lines) >= maxLines {
@@ -456,7 +617,7 @@ func (m tuiModel) renderMeta(maxLines int) string {
 		fmt.Sprintf("updated: %s", noteFile.Note.UpdatedAt.Format("2006-01-02 15:04")),
 		"",
 		"Actions",
-		"- e edit",
+		"- e edit in TUI",
 		"- a archive",
 		"- :move <domain>",
 		"- :tag add|rm <tag>",
@@ -512,4 +673,28 @@ func archiveNoteCmd(svc *core.Service, selector string) tea.Cmd {
 		}
 		return opDoneMsg{status: fmt.Sprintf("archived %s -> %s", result.NoteID, result.RelPath)}
 	}
+}
+
+func updateBodyCmd(svc *core.Service, selector, body string) tea.Cmd {
+	return func() tea.Msg {
+		result, err := svc.UpdateBody(selector, body)
+		if err != nil {
+			return opDoneMsg{err: err}
+		}
+		return opDoneMsg{status: fmt.Sprintf("saved %s -> %s", result.NoteID, result.RelPath)}
+	}
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

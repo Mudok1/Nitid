@@ -25,6 +25,7 @@ When you change behavior, docs, or file conventions, add an entry in
 - `doctor` command for environment and vault health checks.
 - `tui` command with a first Bubble Tea interface and three-panel layout.
 - `internal/core` service layer for shared note operations used by CLI and TUI.
+- `delete` command to permanently remove a note file with explicit confirmation (`--yes`).
 
 ### Changed
 - `edit` command now falls back to `nano` before `vi` when no editor is set.
@@ -33,6 +34,9 @@ When you change behavior, docs, or file conventions, add an entry in
 - Codebase reorganized into `internal/cli` and `internal/vault` modules.
 - Tests split by module (`internal/cli`, `internal/vault`) plus root integration tests.
 - CLI command handlers now route key note workflows through shared core services.
+- `clean`, `validate`, `doctor`, and selector completion now use shared core services.
+- `tui` now edits note bodies directly in-app (no external editor process).
+- `tui` rendering updated with explicit panel borders and black background styling.
 
 ## [0.1.0] - 2026-02-25
 

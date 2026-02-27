@@ -213,6 +213,17 @@ ntd doctor
 
 Open the interactive TUI with list, preview, and metadata panels.
 
+Useful keys inside TUI:
+
+- `j` / `k`: move selection.
+- `/`: start a quick `find` command.
+- `:`: open command mode.
+- `e`: edit selected note body directly inside TUI.
+- `Ctrl+S`: save while editing.
+- `Esc`: cancel editing.
+- `a`: archive selected note (with confirmation).
+- `q`: quit TUI.
+
 ```bash
 ntd tui
 ```
@@ -240,6 +251,16 @@ Move a note to archive and set status to archived.
 
 ```bash
 ntd archive @1
+```
+
+### `ntd delete <id|@ref> --yes`
+
+Permanently delete a note file.
+
+This command requires `--yes` (or `-y`) to reduce accidental deletions.
+
+```bash
+ntd delete @1 --yes
 ```
 
 ### `ntd completion bash`

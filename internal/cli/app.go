@@ -49,6 +49,8 @@ func Run(args []string) int {
 		err = runTag(args[1:])
 	case "archive":
 		err = runArchive(args[1:])
+	case "delete":
+		err = runDelete(args[1:])
 	case "show":
 		err = runShow(args[1:])
 	case "edit":
@@ -93,6 +95,7 @@ func printUsage() {
 	fmt.Println("  ntd move <id|@ref> --domain <id>")
 	fmt.Println("  ntd tag <id|@ref> add|rm <tag>")
 	fmt.Println("  ntd archive <id|@ref>")
+	fmt.Println("  ntd delete <id|@ref> --yes")
 	fmt.Println("  ntd show <id|@ref> [--raw]")
 	fmt.Println("  ntd edit <id|@ref>")
 	fmt.Println("  ntd clean [--dry-run]")
@@ -114,6 +117,7 @@ func printUsage() {
 	fmt.Println("  ntd move @1 --domain engineering")
 	fmt.Println("  ntd tag @1 add concurrency")
 	fmt.Println("  ntd archive @1")
+	fmt.Println("  ntd delete @1 --yes")
 	fmt.Println("  ntd show @1")
 	fmt.Println("  ntd show @1 --raw")
 	fmt.Println("  ntd edit @1")

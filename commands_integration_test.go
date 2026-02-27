@@ -150,6 +150,24 @@ func TestCLI_MoveTagArchiveFlow(t *testing.T) {
 	}
 }
 
+func TestCLI_DeleteFlow(t *testing.T) {
+	dir := t.TempDir()
+	mustOK(t, runCLI(t, dir, []string{"init", "."}, ""))
+	mustOK(t, runCLI(t, dir, []string{"capture", "--title", "Delete me", "body"}, ""))
+
+	r := runCLI(t, dir, []string{"delete", "@1", "--yes"}, "")
+	mustOK(t, r)
+	if !strings.Contains(r.stdout, "deleted") {
+		t.Fatalf("delete output unexpected: %s", r.stdout)
+	}
+
+	r = runCLI(t, dir, []string{"ls"}, "")
+	mustOK(t, r)
+	if !strings.Contains(r.stdout, "no notes found") {
+		t.Fatalf("expected empty list after delete: %s", r.stdout)
+	}
+}
+
 func TestCLI_FindAndSort(t *testing.T) {
 	dir := t.TempDir()
 	mustOK(t, runCLI(t, dir, []string{"init", "."}, ""))
@@ -267,6 +285,7 @@ func TestCLI_InvalidUsageCases(t *testing.T) {
 		{args: []string{"show"}, message: "show requires exactly one"},
 		{args: []string{"move", "@1"}, message: "invalid domain"},
 		{args: []string{"tag", "@1", "nope", "go"}, message: "invalid tag action"},
+		{args: []string{"delete", "@1"}, message: "requires confirmation"},
 		{args: []string{"find"}, message: "find requires a query string"},
 		{args: []string{"daily", "--date", "25-02-2026"}, message: "YYYY-MM-DD"},
 		{args: []string{"templates", "show", "unknown"}, message: "unknown template"},
